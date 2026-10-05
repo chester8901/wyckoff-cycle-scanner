@@ -25,6 +25,13 @@ from config import TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID
 logger = logging.getLogger(__name__)
 
 HEADER = "<b>🚨 SYSTEM ONLINE: WYCKOFF CYCLE MATRIX 🚨</b>\n\n"
+FOOTER = (
+    "\n<b>─────────────────────────</b>\n"
+    "<b>📖 HOW TO TRADE THESE SETUPS:</b>\n"
+    "• <b>Action:</b> Current market price coiled inside the 60-day consolidation.\n"
+    "• <b>MUST BREAK:</b> Price resistance & minimum volume needed to confirm breakout. <i>(Trigger: Buy only when price crosses this level on volume surge).</i>\n"
+    "• <b>RIP-CORD:</b> Volatility stop-loss (2.5x ATR). <i>(Failsafe: Exit immediately if price drops below this level).</i>"
+)
 MAX_MESSAGE_LENGTH = 4000
 
 
@@ -32,6 +39,7 @@ def format_scan_results(results: list[str]) -> list[str]:
     """
     Formats scanner results into HTML messages, chunking them to
     strictly adhere to Telegram's 4096 character payload limit.
+    Includes an easy-to-understand trader cheat sheet.
     """
     if not results:
         return [f"{HEADER}<i>No setups found today.</i>"]
@@ -59,8 +67,13 @@ def format_scan_results(results: list[str]) -> list[str]:
         else:
             current_chunk += entry_block
 
-    if current_chunk.strip():
+    # Append explanatory cheat sheet to the final chunk
+    if len(current_chunk) + len(FOOTER) <= MAX_MESSAGE_LENGTH:
+        current_chunk += FOOTER
         chunks.append(current_chunk.strip())
+    else:
+        chunks.append(current_chunk.strip())
+        chunks.append(FOOTER.strip())
 
     return chunks
 
