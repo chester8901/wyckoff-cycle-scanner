@@ -4,6 +4,7 @@ Uses Telegram ParseMode.HTML for rock-solid formatting immunity.
 Features dual-dispatch engine (python-telegram-bot with requests HTTP API failover).
 """
 
+import sys
 import html
 import asyncio
 import logging
@@ -126,7 +127,11 @@ def send_scan_results(results: list[str]) -> bool:
             _send_single_message(TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID, msg)
             print(f"✅ Chunk {i}/{len(messages)} delivered successfully.")
         except Exception as err:
-            print(f"❌ Failed to deliver message chunk {i}: {err}")
+            err_str = str(err).lower()
+            if "chat not found" in err_str:
+                print("⚠️ TELEGRAM ACTIVATION REQUIRED: Please open @Enegma_machine_bot in Telegram and tap START to authorize messages.", file=sys.stderr)
+            else:
+                print(f"❌ Failed to deliver message chunk {i}: {err}", file=sys.stderr)
             raise err
 
     return True

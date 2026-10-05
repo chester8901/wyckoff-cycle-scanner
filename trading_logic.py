@@ -1,6 +1,7 @@
+import time
+import warnings
 import yfinance as yf
 import pandas as pd
-import warnings
 from tenacity import retry, stop_after_attempt, wait_exponential, retry_if_exception_type
 
 warnings.filterwarnings('ignore')
@@ -22,7 +23,10 @@ STOP_MULTIPLIER = 2.5
 )
 def fetch_data(ticker: str) -> pd.DataFrame:
     """Download market data with isolated retry on rate limits or temporary network issues."""
-    return yf.download(ticker, period="6mo", progress=False)
+    data = yf.download(ticker, period="6mo", progress=False)
+    if data is None or data.empty:
+        raise RuntimeError(f"Rate limited or empty data returned for {ticker}")
+    return data
 
 
 def run_scanner():
@@ -62,5 +66,7 @@ def run_scanner():
         except Exception as e:
             # Silently pass errors (delistings, bad API fetches) to ensure uninterrupted run
             pass
+        finally:
+            time.sleep(0.2)
             
     return results
