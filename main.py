@@ -7,6 +7,12 @@ import sys
 import time
 from datetime import datetime
 
+# Ensure stdout and stderr handle utf-8 characters smoothly on Windows & Linux
+if hasattr(sys.stdout, "reconfigure"):
+    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+if hasattr(sys.stderr, "reconfigure"):
+    sys.stderr.reconfigure(encoding="utf-8", errors="replace")
+
 from config import validate_config, TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID
 from trading_logic import run_scanner, TICKERS
 from bot import send_scan_results
