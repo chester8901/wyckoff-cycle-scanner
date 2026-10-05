@@ -2,9 +2,11 @@
 Telegram notification module for the Wyckoff Screening System.
 Uses Telegram ParseMode.HTML for rock-solid formatting immunity.
 Features dual-dispatch engine (python-telegram-bot with requests HTTP API failover).
+Generates super easy-to-understand cards with custom calculated dollar and risk metrics.
 """
 
 import sys
+import re
 import html
 import asyncio
 import logging
@@ -24,40 +26,129 @@ from config import TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID
 
 logger = logging.getLogger(__name__)
 
-HEADER = "<b>🚨 SYSTEM ONLINE: WYCKOFF CYCLE MATRIX 🚨</b>\n\n"
+HEADER = "<b>🚨 SYSTEM ONLINE: WYCKOFF CYCLE MATRIX 🚨</b>\n"
 FOOTER = (
     "\n<b>─────────────────────────</b>\n"
-    "<b>📖 HOW TO TRADE THESE SETUPS:</b>\n"
-    "• <b>Action:</b> Current market price coiled inside the 60-day consolidation.\n"
-    "• <b>MUST BREAK:</b> Price resistance & minimum volume needed to confirm breakout. <i>(Trigger: Buy only when price crosses this level on volume surge).</i>\n"
-    "• <b>RIP-CORD:</b> Volatility stop-loss (2.5x ATR). <i>(Failsafe: Exit immediately if price drops below this level).</i>"
+    "<b>💡 2 SIMPLE RULES TO REMEMBER:</b>\n"
+    "1️⃣ <b>Be Patient:</b> Do NOT buy today. Wait for the stock to cross the <b>Green Buy Trigger</b> on heavy volume.\n"
+    "2️⃣ <b>Protect Your Money:</b> If you enter a trade and price drops below the <b>Red Safety Stop-Loss</b>, exit immediately without hesitation."
 )
 MAX_MESSAGE_LENGTH = 4000
+
+# Full company names for all 50 tickers
+TICKER_NAMES = {
+    "AAPL": "Apple",
+    "MSFT": "Microsoft",
+    "GOOGL": "Alphabet (Google)",
+    "AMZN": "Amazon",
+    "META": "Meta (Facebook)",
+    "TSLA": "Tesla",
+    "NVDA": "NVIDIA",
+    "JNJ": "Johnson & Johnson",
+    "V": "Visa",
+    "WMT": "Walmart",
+    "JPM": "JPMorgan Chase",
+    "PG": "Procter & Gamble",
+    "MA": "Mastercard",
+    "UNH": "UnitedHealth Group",
+    "DIS": "Walt Disney",
+    "HD": "Home Depot",
+    "BAC": "Bank of America",
+    "VZ": "Verizon",
+    "KO": "Coca-Cola",
+    "PFE": "Pfizer",
+    "MRK": "Merck",
+    "PEP": "PepsiCo",
+    "ABBV": "AbbVie",
+    "T": "AT&T",
+    "CVX": "Chevron",
+    "XOM": "ExxonMobil",
+    "CSCO": "Cisco Systems",
+    "INTC": "Intel",
+    "MCD": "McDonald's",
+    "NFLX": "Netflix",
+    "CRM": "Salesforce",
+    "AMD": "Advanced Micro Devices",
+    "PYPL": "PayPal",
+    "SBUX": "Starbucks",
+    "BA": "Boeing",
+    "IBM": "IBM",
+    "MMM": "3M Company",
+    "GE": "General Electric",
+    "F": "Ford Motor",
+    "GM": "General Motors",
+    "TGT": "Target",
+    "UBER": "Uber Technologies",
+    "ABNB": "Airbnb",
+    "SQ": "Block (Square)",
+    "COIN": "Coinbase",
+    "PLTR": "Palantir Technologies",
+    "ROKU": "Roku",
+    "ZM": "Zoom Video",
+    "DOCU": "DocuSign",
+    "DKNG": "DraftKings",
+}
+
+
+def format_card(raw_entry: str) -> str:
+    """
+    Parses a raw scanner entry and transforms it into a crystal-clear,
+    beginner-friendly trading card with custom calculated money and percentage metrics.
+    """
+    pattern = r"\[(.*?)\] Action: \$([\d\.]+) \| MUST BREAK: \$([\d\.]+) on Vol > (\d+) \| RIP-CORD: \$([\d\.]+)"
+    match = re.match(pattern, raw_entry.strip())
+    
+    if not match:
+        return f"• {html.escape(raw_entry)}"
+
+    ticker, current_str, trigger_str, vol_str, stop_str = match.groups()
+    current = float(current_str)
+    trigger = float(trigger_str)
+    vol = int(vol_str)
+    stop = float(stop_str)
+
+    company = TICKER_NAMES.get(ticker, ticker)
+
+    # Custom calculated money numbers
+    upside_dlr = trigger - current
+    upside_pct = (upside_dlr / current * 100) if current > 0 else 0.0
+
+    risk_dlr = current - stop
+    risk_pct = (risk_dlr / current * 100) if current > 0 else 0.0
+
+    # Humanized volume format
+    if vol >= 1_000_000:
+        vol_human = f"{vol / 1_000_000:.2f}M"
+    elif vol >= 1_000:
+        vol_human = f"{vol / 1_000:.1f}K"
+    else:
+        vol_human = f"{vol:,}"
+
+    card = (
+        f"🎯 <b>{ticker} — {company}</b>\n"
+        f"💵 <b>Current Price:</b> ${current:.2f} <i>(Resting in tight coil)</i>\n"
+        f"🟢 <b>BUY TRIGGER:</b> Buy ONLY if price climbs past <b>${trigger:.2f}</b> "
+        f"(needs +${upside_dlr:.2f} / +{upside_pct:.1f}% rise) on volume &gt; <b>{vol_human} shares</b>.\n"
+        f"🛑 <b>SAFETY STOP-LOSS:</b> Exit immediately if price drops below <b>${stop:.2f}</b> "
+        f"(Maximum risk is <b>-${risk_dlr:.2f} per share</b> / -{risk_pct:.1f}%).\n"
+        f"📋 <b>Next Step:</b> <i>Put on watchlist. Do not buy until the green trigger is crossed.</i>"
+    )
+    return card
 
 
 def format_scan_results(results: list[str]) -> list[str]:
     """
     Formats scanner results into HTML messages, chunking them to
     strictly adhere to Telegram's 4096 character payload limit.
-    Includes an easy-to-understand trader cheat sheet.
     """
     if not results:
-        return [f"{HEADER}<i>No setups found today.</i>"]
+        return [f"{HEADER}\n<i>No setups found today. All monitored stocks are either volatile or uncoiled.</i>"]
 
-    formatted_entries = []
-    for entry in results:
-        # html.escape ensures characters like '<', '>', '&' never break HTML tags
-        safe_entry = html.escape(entry)
-        if safe_entry.startswith("[") and "]" in safe_entry:
-            ticker_end = safe_entry.find("]")
-            ticker = safe_entry[1:ticker_end]
-            body = safe_entry[ticker_end + 1:]
-            formatted_entries.append(f"🎯 <b>[{ticker}]</b>{body}")
-        else:
-            formatted_entries.append(f"• {safe_entry}")
+    intro = f"{HEADER}<i>Found {len(results)} coiled setup(s) ready on the watchlist:</i>\n\n"
+    formatted_entries = [format_card(entry) for entry in results]
 
     chunks = []
-    current_chunk = HEADER
+    current_chunk = intro
 
     for entry in formatted_entries:
         entry_block = f"{entry}\n\n"

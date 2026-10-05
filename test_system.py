@@ -1,11 +1,10 @@
 """
 Unit tests for the Wyckoff Screening System components.
-Verifies syntax, formatting, chunking, and configuration safety without external API calls.
+Verifies syntax, custom money calculations, card formatting, and chunking.
 """
 
 import unittest
-from config import validate_config
-from bot import format_scan_results, HEADER, MAX_MESSAGE_LENGTH
+from bot import format_scan_results, format_card, HEADER, MAX_MESSAGE_LENGTH
 
 
 class TestWyckoffSystem(unittest.TestCase):
@@ -15,31 +14,33 @@ class TestWyckoffSystem(unittest.TestCase):
         messages = format_scan_results([])
         self.assertEqual(len(messages), 1)
         self.assertIn("🚨 SYSTEM ONLINE: WYCKOFF CYCLE MATRIX 🚨", messages[0])
-        self.assertIn("No setups found today.", messages[0])
+        self.assertIn("No setups found today", messages[0])
 
-    def test_setup_formatting_html_safety(self):
-        """Verifies that setups with special characters are safely escaped and formatted in HTML."""
-        sample_results = [
-            "[AAPL] Action: $150.25 | MUST BREAK: $155.00 on Vol > 1500000 | RIP-CORD: $140.50",
-            "[MSFT] Action: $420.00 | MUST BREAK: $435.50 on Vol > 2000000 | RIP-CORD: $395.20",
-        ]
-        messages = format_scan_results(sample_results)
-        self.assertEqual(len(messages), 1)
-        body = messages[0]
+    def test_card_custom_money_calculation(self):
+        """Verifies that custom money numbers, percentages, and plain-English plans are calculated correctly."""
+        raw = "[V] Action: $368.42 | MUST BREAK: $385.57 on Vol > 9883988 | RIP-CORD: $353.24"
+        card = format_card(raw)
 
-        # Verify Header
-        self.assertIn(HEADER.strip(), body)
+        # Check ticker and company name
+        self.assertIn("V — Visa", card)
+        self.assertIn("$368.42", card)
 
-        # Verify HTML tags
-        self.assertIn("<b>[AAPL]</b>", body)
-        self.assertIn("<b>[MSFT]</b>", body)
-        # Verify Vol > is escaped safely as Vol &gt;
-        self.assertIn("Vol &gt; 1500000", body)
-        self.assertIn("Vol &gt; 2000000", body)
+        # Check custom calculated upside money number: $385.57 - $368.42 = $17.15 (+4.7%)
+        self.assertIn("$385.57", card)
+        self.assertIn("+$17.15", card)
+        self.assertIn("+4.7%", card)
+        self.assertIn("9.88M shares", card)
+
+        # Check custom calculated downside risk money number: $368.42 - $353.24 = $15.18 (-4.1%)
+        self.assertIn("$353.24", card)
+        self.assertIn("-$15.18 per share", card)
+        self.assertIn("-4.1%", card)
+
+        # Check action plan
+        self.assertIn("Put on watchlist", card)
 
     def test_message_chunking(self):
         """Verifies that messages exceeding the character limit are split into chunks."""
-        # Create a large batch of results
         mock_results = [
             f"[TEST{i}] Action: $100.00 | MUST BREAK: $110.00 on Vol > 1000000 | RIP-CORD: $90.00"
             for i in range(100)
